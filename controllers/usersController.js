@@ -76,21 +76,29 @@ const uploadKeys = asyncHandler(async (req, res) => {
  * Get public keys by email
  * GET /email?email=user@example.com
  */
-const getKeysByEmail = asyncHandler(async (req, res) => {
-  const emailRaw = req.query?.email;
 
-  if (!isValidEmail(emailRaw)) return badRequest(res, "Invalid email query param");
-  const email = normalizeEmail(emailRaw);
+      // final response = await apiService.get(
+      //   _fetchPublicKeyRoute(),
+      //   queryParameters: {'emails': emails.join(',')},
+      //   );
+const getKeysByEmail = asyncHandler(async (req, res) => {
+  const emailRaw = req.query?.emails; // expecting comma-separated emails
+  const emails = emailRaw?.split(',').map(normalizeEmail) || [];
+
+  if (emails.length === 0 || emails.some((email) => !isValidEmail(email))) {
+    return badRequest(res, "Invalid email query param");
+  }
 
   const query = `
     SELECT "x25519_pubkey", "Ed25519_pubkey", "smime_certificate"
     FROM "users_keys"
-    WHERE "EmailAddress" = $1
+    WHERE "EmailAddress" = ANY($1)
   `;
-  const result = await pool.query(query, [email]);
+  const result = await pool.query(query, [emails]);
 
   if (result.rows.length === 0) return notFound(res, "Email not found");
-  return res.json(result.rows[0]);
+  return res.json(result.rows);
+
 });
 
 /**
@@ -122,20 +130,22 @@ const updateSMIMECertificate = asyncHandler(async (req, res) => {
  * GET /smime_certificate?email=user@example.com
  */
 const getCertificateByEmail = asyncHandler(async (req, res) => {
-  const emailRaw = req.query?.email;
+  const emailRaw = req.query?.emails;
+  const emails = emailRaw?.split(',').map(normalizeEmail) || [];
 
-  if (!isValidEmail(emailRaw)) return badRequest(res, "Invalid email query param");
-  const email = normalizeEmail(emailRaw);
+  if (emails.length === 0 || emails.some((email) => !isValidEmail(email))) {
+    return badRequest(res, "Invalid email query param");
+  }
 
   const query = `
     SELECT "smime_certificate"
     FROM "users_keys"
-    WHERE "EmailAddress" = $1
+    WHERE "EmailAddress" = ANY($1)
   `;
-  const result = await pool.query(query, [email]);
+  const result = await pool.query(query, [emails]);
 
   if (result.rows.length === 0) return notFound(res, "Email not found");
-  return res.json(result.rows[0]);
+  return res.json(result.rows);
 });
 
 /**
