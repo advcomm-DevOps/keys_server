@@ -23,7 +23,8 @@ jobs:
 
             SERVICE_PATH="/srv/apps/pubkey/services/api/exec"
             SERVICE_NAME="pubkey-api"
-            REPO_URL="https://github.com/advcomm-DevOps/keys_server.git"
+            GH_TOKEN=${{ secrets.GH_TOKEN_READONLY }}
+            REPO_URL="https://$GH_TOKEN@github.com/advcomm-DevOps/keys_server.git"
 
             echo "🚀 Starting Pubkey API Deployment..."
 
