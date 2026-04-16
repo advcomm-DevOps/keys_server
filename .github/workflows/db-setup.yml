@@ -22,28 +22,15 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
 
-      - name: Create .pubkey.env if missing
+      - name: Verify Environment Setup
         run: |
           ssh -i ~/.ssh/id_rsa root@${{ secrets.SERVER_HOST }} << 'EOF'
-          if [ ! -f /root/.pubkey.env ]; then
-            echo "=== Creating .pubkey.env ==="
-            cat > /root/.pubkey.env << 'ENVEOF'
-PORT=3010
-NODE_ENV=production
-DB_HOST=mnm-postgres
-DB_PORT=5432
-DB_USER=postgres
-DB_PASSWORD=${{ secrets.DB_PASSWORD }}
-DB_NAME=pubkey_db
-JSON_LIMIT=10mb
-DB_POOL_MAX=20
-DB_POOL_IDLE_TIMEOUT_MS=30000
-DB_POOL_CONN_TIMEOUT_MS=10000
-ENVEOF
+          echo "=== Checking .pubkey.env ==="
+          if [ -f /root/.pubkey.env ]; then
+            echo "✅ .pubkey.env exists"
             chmod 600 /root/.pubkey.env
-            echo "✅ .pubkey.env created"
           else
-            echo "✅ .pubkey.env already exists"
+            echo "⚠️ .pubkey.env not found - must be created manually"
           fi
           EOF
 
