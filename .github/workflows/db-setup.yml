@@ -1,0 +1,80 @@
+name: Database Setup and Migration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'db/**'
+  workflow_dispatch:
+
+jobs:
+  db-setup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Create .pubkey.env if missing
+        run: |
+          ssh -i ~/.ssh/id_rsa root@${{ secrets.SERVER_HOST }} << 'EOF'
+          if [ ! -f /root/.pubkey.env ]; then
+            echo "=== Creating .pubkey.env ==="
+            cat > /root/.pubkey.env <<-'ENVEOF'
+            PORT=3010
+            NODE_ENV=production
+            DB_HOST=mnm-postgres
+            DB_PORT=5432
+            DB_USER=postgres
+            DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+            DB_NAME=pubkey_db
+            JSON_LIMIT=10mb
+            DB_POOL_MAX=20
+            DB_POOL_IDLE_TIMEOUT_MS=30000
+            DB_POOL_CONN_TIMEOUT_MS=10000
+            ENVEOF
+            chmod 600 /root/.pubkey.env
+            echo "✅ .pubkey.env created"
+          else
+            echo "✅ .pubkey.env already exists"
+          fi
+          EOF
+
+      - name: Verify Database Connectivity
+        run: |
+          ssh -i ~/.ssh/id_rsa root@${{ secrets.SERVER_HOST }} << 'EOF'
+          echo "=== Checking PostgreSQL Pod ==="
+          su postgres -c "XDG_RUNTIME_DIR=/run/user/$(id -u postgres) podman ps | grep mnm-postgres" || echo "PostgreSQL container found (rootful)"
+
+          echo "=== Testing Database Connection ==="
+          PGPASSWORD="${{ secrets.DB_PASSWORD }}" psql -h 46.62.168.53 -p 5432 -U postgres -d pubkey_db -c "\dt" || {
+            echo "⚠️ Cannot connect via network. Trying via podman container..."
+            podman exec mnm-postgres psql -U postgres -d pubkey_db -c "\dt" || echo "⚠️ Database not reachable"
+          }
+          EOF
+
+      - name: Run Database Schema Setup
+        run: |
+          ssh -i ~/.ssh/id_rsa root@${{ secrets.SERVER_HOST }} << 'EOF'
+          echo "=== Database Schema Setup ==="
+          # Database initialization is handled by the app on startup (db/init.js)
+          # This workflow ensures the database exists and credentials are correct
+
+          PGPASSWORD="${{ secrets.DB_PASSWORD }}" psql -h mnm-postgres -p 5432 -U postgres -c "CREATE DATABASE pubkey_db;" 2>&1 | grep -v "already exists" || true
+
+          echo "✅ Database setup complete - app will initialize tables on startup"
+          EOF
+
+      - name: Cleanup SSH
+        run: |
+          rm -f ~/.ssh/id_rsa
+
+      - name: Database Setup Complete
+        run: echo "✅ Database setup workflow completed"

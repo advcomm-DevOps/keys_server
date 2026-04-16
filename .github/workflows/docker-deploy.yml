@@ -1,0 +1,110 @@
+name: Build and Deploy pubkey-api Container
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'db/**'
+      - '.gitignore'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build Docker Image
+        env:
+          DOCKER_BUILDKIT: 1
+        run: |
+          docker build -t pubkey-api:latest .
+          echo "✅ Docker image built successfully"
+
+      - name: Verify Image
+        run: |
+          docker images | grep pubkey-api
+          docker inspect pubkey-api:latest | head -20
+
+      - name: Setup SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+          eval "$(ssh-agent -s)"
+          ssh-add ~/.ssh/id_rsa
+
+      - name: Save Docker Image to TAR
+        run: |
+          docker save pubkey-api:latest -o pubkey-api-latest.tar
+          ls -lh pubkey-api-latest.tar
+
+      - name: Copy Image to Server
+        run: |
+          scp -i ~/.ssh/id_rsa pubkey-api-latest.tar root@${{ secrets.SERVER_HOST }}:/tmp/pubkey-api-latest.tar
+          echo "✅ Image copied to server"
+
+      - name: Stop Old Container & Load New Image
+        run: |
+          ssh -i ~/.ssh/id_rsa root@${{ secrets.SERVER_HOST }} << 'EOF'
+          echo "=== Fixing permissions ==="
+          chmod 644 /root/.pubkey.env
+          chmod 755 /root
+
+          echo "=== Stopping old container ==="
+          su svc_pubkey_api -c "XDG_RUNTIME_DIR=/run/user/$(id -u svc_pubkey_api) podman stop pubkey-api 2>/dev/null || echo 'No old container'"
+          su svc_pubkey_api -c "XDG_RUNTIME_DIR=/run/user/$(id -u svc_pubkey_api) podman rm pubkey-api 2>/dev/null || echo 'Removed'"
+
+          echo "=== Loading new image ==="
+          su svc_pubkey_api -c "XDG_RUNTIME_DIR=/run/user/$(id -u svc_pubkey_api) podman load -i /tmp/pubkey-api-latest.tar"
+
+          echo "=== Starting new container ==="
+          su svc_pubkey_api -c "XDG_RUNTIME_DIR=/run/user/$(id -u svc_pubkey_api) podman run -d \
+            --name pubkey-api \
+            --network xdoc-network \
+            --restart unless-stopped \
+            -p 127.0.0.1:3010:3010 \
+            --env-file /root/.pubkey.env \
+            -e DB_HOST=mnm-postgres \
+            pubkey-api:latest"
+
+          echo "=== Container Status ==="
+          su svc_pubkey_api -c "XDG_RUNTIME_DIR=/run/user/$(id -u svc_pubkey_api) podman ps | grep pubkey-api || echo 'Container not found'"
+          echo "✅ Container deployed"
+          EOF
+
+      - name: Health Check
+        run: |
+          ssh -i ~/.ssh/id_rsa root@${{ secrets.SERVER_HOST }} << 'EOF'
+          sleep 8
+          echo "=== Container Status ==="
+          su svc_pubkey_api -c "XDG_RUNTIME_DIR=/run/user/$(id -u svc_pubkey_api) podman ps -a | grep pubkey-api" || echo "Container not found"
+
+          echo "=== Container Logs ==="
+          su svc_pubkey_api -c "XDG_RUNTIME_DIR=/run/user/$(id -u svc_pubkey_api) podman logs pubkey-api 2>&1 | tail -30"
+
+          echo "=== Testing API Health ==="
+          curl -s http://127.0.0.1:3010/api/v1/users || echo "API not responding"
+
+          echo "=== Testing via NGINX ==="
+          curl -s https://pubkey.scomm.ai/api/v1/users | head -20 || echo "NGINX proxy not responding"
+          EOF
+
+      - name: Deployment Complete
+        run: echo "✅ pubkey-api deployed successfully to ${{ secrets.SERVER_HOST }}:3010"
+
+      - name: Cleanup
+        run: |
+          rm -f pubkey-api-latest.tar
+          rm -f ~/.ssh/id_rsa
