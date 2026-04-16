@@ -1,4 +1,4 @@
-name: Build and Deploy pubkey-api Container
+name: Build and Deploy Container
 
 on:
   push:
@@ -18,21 +18,23 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 20
           cache: 'npm'
 
       - name: Install Dependencies
         run: npm ci
 
-      - name: Build Podman Image
+      - name: Build Docker Image
+        env:
+          DOCKER_BUILDKIT: 1
         run: |
-          podman build -t pubkey-api:latest .
-          echo "✅ Podman image built successfully"
+          docker build -t pubkey-api:latest .
+          echo "✅ Docker image built successfully"
 
       - name: Verify Image
         run: |
-          podman images | grep pubkey-api
-          podman inspect pubkey-api:latest | head -20
+          docker images | grep pubkey-api
+          docker inspect pubkey-api:latest | head -20
 
       - name: Setup SSH Key
         run: |
@@ -43,9 +45,9 @@ jobs:
           eval "$(ssh-agent -s)"
           ssh-add ~/.ssh/id_rsa
 
-      - name: Save Podman Image to TAR
+      - name: Save Docker Image to TAR
         run: |
-          podman save pubkey-api:latest -o pubkey-api-latest.tar
+          docker save pubkey-api:latest -o pubkey-api-latest.tar
           ls -lh pubkey-api-latest.tar
 
       - name: Copy Image to Server
@@ -58,6 +60,7 @@ jobs:
           ssh -i ~/.ssh/id_rsa root@${{ secrets.SERVER_HOST }} << 'EOF'
           echo "=== Fixing permissions ==="
           chmod 644 /root/.pubkey.env
+          chmod 644 /tmp/pubkey-api-latest.tar
           chmod 755 /root
 
           echo "=== Stopping old container ==="
@@ -100,7 +103,7 @@ jobs:
           EOF
 
       - name: Deployment Complete
-        run: echo "✅ pubkey-api container deployed successfully to ${{ secrets.SERVER_HOST }}:3010"
+        run: echo "✅ pubkey-api deployed successfully to ${{ secrets.SERVER_HOST }}:3010"
 
       - name: Cleanup
         run: |
