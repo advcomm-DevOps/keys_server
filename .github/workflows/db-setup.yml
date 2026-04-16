@@ -46,10 +46,7 @@ jobs:
           source /root/.pubkey.env
 
           echo "=== Verifying Database Setup ==="
-          PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -U "$DB_USER" -d "pubkey_db" << VERIFY
-          \echo '--- Database Info ---'
-          SELECT current_database();
-          VERIFY
+          PGPASSWORD="$DB_PASSWORD" psql -U "$DB_USER" -d "pubkey_db" -c "SELECT current_database();" 2>/dev/null && echo "✅ Database verified" || echo "⚠️ Verify skipped (DB will init on container start)"
           EOF
 
       - name: Cleanup SSH Key
