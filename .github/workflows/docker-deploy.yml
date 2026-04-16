@@ -64,14 +64,14 @@ jobs:
           chmod 755 /root
 
           echo "=== Stopping old container ==="
-          su svc_pubkey_api -c "XDG_RUNTIME_DIR=/run/user/$(id -u svc_pubkey_api) podman stop pubkey-api 2>/dev/null || echo 'No old container'"
-          su svc_pubkey_api -c "XDG_RUNTIME_DIR=/run/user/$(id -u svc_pubkey_api) podman rm pubkey-api 2>/dev/null || echo 'Removed'"
+          su svc_podman -c "XDG_RUNTIME_DIR=/run/user/$(id -u svc_podman) podman stop pubkey-api 2>/dev/null || echo 'No old container'"
+          su svc_podman -c "XDG_RUNTIME_DIR=/run/user/$(id -u svc_podman) podman rm pubkey-api 2>/dev/null || echo 'Removed'"
 
           echo "=== Loading new image ==="
-          su svc_pubkey_api -c "XDG_RUNTIME_DIR=/run/user/$(id -u svc_pubkey_api) podman load -i /tmp/pubkey-api-latest.tar"
+          su svc_podman -c "XDG_RUNTIME_DIR=/run/user/$(id -u svc_podman) podman load -i /tmp/pubkey-api-latest.tar"
 
           echo "=== Starting new container ==="
-          su svc_pubkey_api -c "XDG_RUNTIME_DIR=/run/user/$(id -u svc_pubkey_api) podman run -d \
+          su svc_podman -c "XDG_RUNTIME_DIR=/run/user/$(id -u svc_podman) podman run -d \
             --name pubkey-api \
             --network xdoc-network \
             --restart unless-stopped \
@@ -81,7 +81,7 @@ jobs:
             pubkey-api:latest"
 
           echo "=== Container Status ==="
-          su svc_pubkey_api -c "XDG_RUNTIME_DIR=/run/user/$(id -u svc_pubkey_api) podman ps | grep pubkey-api || echo 'Container not found'"
+          su svc_podman -c "XDG_RUNTIME_DIR=/run/user/$(id -u svc_podman) podman ps | grep pubkey-api || echo 'Container not found'"
           echo "✅ Container deployed"
           EOF
 
@@ -90,10 +90,10 @@ jobs:
           ssh -i ~/.ssh/id_rsa root@${{ secrets.SERVER_HOST }} << 'EOF'
           sleep 8
           echo "=== Container Status ==="
-          su svc_pubkey_api -c "XDG_RUNTIME_DIR=/run/user/$(id -u svc_pubkey_api) podman ps -a | grep pubkey-api" || echo "Container not found"
+          su svc_podman -c "XDG_RUNTIME_DIR=/run/user/$(id -u svc_podman) podman ps -a | grep pubkey-api" || echo "Container not found"
 
           echo "=== Container Logs ==="
-          su svc_pubkey_api -c "XDG_RUNTIME_DIR=/run/user/$(id -u svc_pubkey_api) podman logs pubkey-api 2>&1 | tail -30"
+          su svc_podman -c "XDG_RUNTIME_DIR=/run/user/$(id -u svc_podman) podman logs pubkey-api 2>&1 | tail -30"
 
           echo "=== Testing API Health ==="
           curl -s http://127.0.0.1:3010/api/v1/users || echo "API not responding"
