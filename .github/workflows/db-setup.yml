@@ -27,24 +27,33 @@ jobs:
           ssh -i ~/.ssh/id_rsa root@${{ secrets.SERVER_HOST }} << 'EOF'
           source /root/.pubkey.env
 
-          echo "=== Creating pubkey_db database ==="
-          PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -U "$DB_USER" -tc "SELECT 1 FROM pg_database WHERE datname = 'pubkey_db'" | grep -q 1 || \
-          PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -U "$DB_USER" -c "CREATE DATABASE pubkey_db"
+          # Set environment variables for psql
+          export PGHOST="$DB_HOST"
+          export PGPORT="$DB_PORT"
+          export PGUSER="$DB_USER"
+          export PGPASSWORD="$DB_PASSWORD"
 
-          echo "✅ Database ready"
+          echo "=== Creating pubkey_db database ==="
+          psql -tc "SELECT 1 FROM pg_database WHERE datname = 'pubkey_db'" | grep -q 1 || \
+          psql -c "CREATE DATABASE pubkey_db"
+
+          echo "✅ Database created"
           EOF
 
-      - name: Verify Database Connectivity
+      - name: Verify Database Setup
         run: |
           ssh -i ~/.ssh/id_rsa root@${{ secrets.SERVER_HOST }} << 'EOF'
           source /root/.pubkey.env
 
-          echo "=== Verifying database connectivity ==="
-          PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -U "$DB_USER" -d "pubkey_db" -c "SELECT version();" && echo "✅ Connected"
+          echo "=== Verifying Database Setup ==="
+          PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -U "$DB_USER" -d "pubkey_db" << VERIFY
+          \echo '--- Database Info ---'
+          SELECT current_database();
+          VERIFY
           EOF
 
       - name: Cleanup SSH Key
         run: rm -f ~/.ssh/id_rsa
 
       - name: Database Setup Complete
-        run: echo "✅ Database setup completed"
+        run: echo "✅ Database setup completed successfully"
